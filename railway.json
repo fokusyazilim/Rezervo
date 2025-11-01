@@ -1,0 +1,6 @@
+{
+  "builder": "nixpacks",
+  "nixpacks": {
+    "providers": ["nodejs-npm"]
+  }
+}
