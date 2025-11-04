@@ -1,10 +1,28 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const admin = require('firebase-admin');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Firebase Admin SDK Initialization
+const serviceAccount = {
+  type: "service_account",
+  project_id: process.env.FIREBASE_PROJECT_ID,
+  private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  client_email: process.env.FIREBASE_CLIENT_EMAIL,
+};
+
+try {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+  console.log('✅ Firebase Admin SDK initialized successfully');
+} catch (error) {
+  console.error('❌ Firebase Admin SDK initialization failed:', error.message);
+}
 
 // Middleware
 app.use(cors({
@@ -12,8 +30,7 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
-    'http://localhost:5000',
-    'https://web-production-aac8f.up.railway.app'  // Railway production URL
+    'http://localhost:5000'
   ],
   credentials: true
 }));
@@ -96,6 +113,135 @@ app.get('/api/firebase/config', (req, res) => {
       hasAppId: !!firebaseConfig.appId
     });
     res.json(firebaseConfig);
+  }
+});
+
+// Firestore Document Operations
+app.post('/api/firebase/firestore/doc', async (req, res) => {
+  try {
+    const { collection, docId, data, operation } = req.body;
+    const db = admin.firestore();
+    const docRef = db.collection(collection).doc(docId);
+
+    let result;
+    switch (operation) {
+      case 'get':
+        const docSnap = await docRef.get();
+        result = { exists: docSnap.exists, data: docSnap.data(), id: docSnap.id };
+        break;
+      case 'set':
+        await docRef.set(data);
+        result = { success: true };
+        break;
+      case 'update':
+        await docRef.update(data);
+        result = { success: true };
+        break;
+      case 'delete':
+        await docRef.delete();
+        result = { success: true };
+        break;
+      default:
+        throw new Error('Invalid operation');
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Firestore doc error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Firestore Collection Operations
+app.post('/api/firebase/firestore/collection', async (req, res) => {
+  try {
+    const { collection, data, operation } = req.body;
+    const db = admin.firestore();
+    const collectionRef = db.collection(collection);
+
+    let result;
+    switch (operation) {
+      case 'get':
+        const snapshot = await collectionRef.get();
+        result = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        break;
+      case 'add':
+        const docRef = await collectionRef.add(data);
+        result = { id: docRef.id };
+        break;
+      default:
+        throw new Error('Invalid operation');
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Firestore collection error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Firestore Query Operations
+app.post('/api/firebase/firestore/query', async (req, res) => {
+  try {
+    const { collection, whereClauses = [], orderBy = null, limit = null } = req.body;
+    const db = admin.firestore();
+    let query = db.collection(collection);
+
+    // Apply where clauses
+    whereClauses.forEach(clause => {
+      query = query.where(clause.field, clause.operator, clause.value);
+    });
+
+    // Apply orderBy
+    if (orderBy) {
+      query = query.orderBy(orderBy.field, orderBy.direction || 'asc');
+    }
+
+    // Apply limit
+    if (limit) {
+      query = query.limit(limit);
+    }
+
+    const snapshot = await query.get();
+    const result = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Firestore query error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Storage Upload
+app.post('/api/firebase/storage/upload', async (req, res) => {
+  try {
+    // Note: File upload handling requires multer middleware
+    res.status(501).json({ 
+      success: false, 
+      message: 'Storage upload not implemented yet - requires multer setup' 
+    });
+  } catch (error) {
+    console.error('Storage upload error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Storage Download URL
+app.post('/api/firebase/storage/download-url', async (req, res) => {
+  try {
+    const { path } = req.body;
+    const bucket = admin.storage().bucket();
+    const file = bucket.file(path);
+    
+    const [url] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    res.json({ success: true, data: { url } });
+  } catch (error) {
+    console.error('Storage download URL error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
