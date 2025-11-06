@@ -29,7 +29,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://tradefy.com.tr',
+    'https://tradefy.com.tr',
     'http://localhost:5000'
   ],
   credentials: true
@@ -276,4 +276,5 @@ app.listen(PORT, () => {
 ╚════════════════════════════════════════╝
   `);
 });
+
 
